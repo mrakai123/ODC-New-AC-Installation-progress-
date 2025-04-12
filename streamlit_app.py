@@ -16,25 +16,22 @@ def load_data():
     form_url = "https://docs.google.com/spreadsheets/d/1IeZVNb01-AMRuXjj9SZQyELTVr6iw5Vq4JsiN7PdZEs/export?format=csv"
 
     df_sites = pd.read_csv(project_url)
-df_sites.columns = df_sites.columns.str.strip()
     df_sites.columns = df_sites.columns.str.strip()
 
+    df_form = pd.read_csv(form_url)
+    df_form.columns = df_form.columns.str.strip()
+
+    # التعامل مع اسم العمود Site ID بمرونة
     if not any("site" in col.lower() and "id" in col.lower() for col in df_sites.columns):
-        st.error("❌ 'Site ID' not found in project sheet.")
+        st.error("❌ 'Site ID' column not found in the project sheet.")
         return pd.DataFrame()
 
     site_col = [col for col in df_sites.columns if "site" in col.lower() and "id" in col.lower()][0]
-df_sites["Site ID"] = df_sites[site_col].astype(str).str.strip().str.upper()
+    df_sites["Site ID"] = df_sites[site_col].astype(str).str.strip().str.upper()
 
-    df_form = pd.read_csv(form_url)
-df_form.columns = df_form.columns.str.strip()
-    df_form.columns = df_form.columns.str.strip()
     df_form["Site ID"] = df_form["Site ID"].astype(str).str.strip().str.upper()
 
-    # فقط التركيب الذي يخص المواقع الجديدة
     df_form_filtered = df_form[df_form["Site ID"].isin(df_sites["Site ID"])]
-
-    # دمج بيانات الفورم في مواقع المشروع فقط
     df_sites = df_sites.merge(
         df_form_filtered[["Site ID", "Latitude", "Longitude", "Timestamp"]],
         on="Site ID",
@@ -42,8 +39,10 @@ df_form.columns = df_form.columns.str.strip()
     )
 
     df_sites["Status"] = df_sites["Timestamp"].apply(lambda x: "Installed" if pd.notnull(x) else "Open")
-    df_sites["Latitude"] = df_sites["Latitude"].combine_first(df_sites.get("Latitude_y"))
-    df_sites["Longitude"] = df_sites["Longitude"].combine_first(df_sites.get("Longitude_y"))
+    if "Latitude" in df_sites.columns:
+        df_sites["Latitude"] = df_sites["Latitude"].combine_first(df_sites.get("Latitude_y"))
+    if "Longitude" in df_sites.columns:
+        df_sites["Longitude"] = df_sites["Longitude"].combine_first(df_sites.get("Longitude_y"))
     df_sites["Installation Date"] = df_sites["Timestamp"].fillna("")
 
     df_sites["Latitude"] = pd.to_numeric(df_sites["Latitude"], errors="coerce")
@@ -106,7 +105,7 @@ if not df.empty:
 
     st.markdown("### 📥 Export Data")
     excel_buffer = BytesIO()
-    df.to_excel(excel_buffer, index=False)
+    df.to_excel(excel_buffer, index=False, engine="openpyxl")
     excel_data = excel_buffer.getvalue()
 
     st.download_button("⬇️ Download Excel", data=excel_data, file_name="installation_status.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
