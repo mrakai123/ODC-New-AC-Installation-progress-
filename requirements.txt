@@ -1,7 +1,7 @@
 streamlit
 pandas
+matplotlib
 folium
 streamlit-folium
 openpyxl
-matplotlib
-xhtml2pdf
+streamlit-autorefresh
