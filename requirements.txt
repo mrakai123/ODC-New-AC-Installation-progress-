@@ -5,3 +5,9 @@ folium
 streamlit-folium
 openpyxl
 streamlit-autorefresh
+streamlit
+streamlit-autorefresh
+pandas
+folium
+streamlit-folium
+plotly
