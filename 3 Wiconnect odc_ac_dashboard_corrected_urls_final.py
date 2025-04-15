@@ -1,59 +1,78 @@
-import streamlit as st
+هل يوجد خطاء هنا   import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+
+# --- إعداد الصفحة ---
+st.set_page_config(page_title="ODC-AC Installation Dashboard", layout="wide")
+
+# --- التحديث التلقائي كل 30 ثانية ---
+refresh_interval = 30  # بالثواني
+count = st_autorefresh(interval=refresh_interval * 1000, key="auto_refresh")
+
+# --- مكتبات ---
 import pandas as pd
-import plotly.express as px
 import folium
 from streamlit_folium import folium_static
+import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import time
 
-# --- إعداد الصفحة ---
-st.set_page_config(page_title="ODC-AC Installation Dashboard", layout="wide")
-refresh_interval = 30
-st_autorefresh(interval=refresh_interval * 1000, key="auto_refresh")
-
-# --- العناوين والشعارات ---
-st.markdown("""
-    <div style='display: flex; justify-content: space-between; align-items: center;'>
-        <img src='https://i.ibb.co/S6ZwJYt/wiconnect-logo.png' width='150'>
-        <h1 style='text-align: center; color: #007ACC;'>📊 ODC-AC Installation Dashboard</h1>
-        <img src='https://i.ibb.co/Ycjgfdm/latis-logo.png' width='120'>
-    </div>
-""", unsafe_allow_html=True)
+# --- Header ---
+col_logo1, col_title, col_logo2 = st.columns([1, 6, 1])
+with col_logo1:
+    st.image("wiconnect_logo.png", width=120)
+with col_title:
+    st.markdown("<h1 style='text-align: center;'>📊 ODC-AC Installation Dashboard</h1>", unsafe_allow_html=True)
+with col_logo2:
+    st.image("latis_logo.png", width=120)
 
 # --- تحميل البيانات ---
 @st.cache_data(ttl=30)
 def load_data():
-    sheet_url = "https://docs.google.com/spreadsheets/d/1pZBg_lf8HakI6o2W1v8u1lUN2FGJn1Jc/export?format=csv&gid=622694975"
-    form_url = "https://docs.google.com/spreadsheets/d/1IeZVNb01-AMRuXjj9SZQyELTVr6iw5Vq4JsiN7PdZEs/export?format=csv&gid=1076079545"
     try:
+        sheet_url = "https://docs.google.com/spreadsheets/d/1pZBg_lf8HakI6o2W1v8u1lUN2FGJn1Jc/export?format=csv&gid=622694975"
+        form_url = "https://docs.google.com/spreadsheets/d/1IeZVNb01-AMRuXjj9SZQyELTVr6iw5Vq4JsiN7PdZEs/export?format=csv&gid=1076079545"
         df_sites = pd.read_csv(sheet_url)
         df_form = pd.read_csv(form_url)
-        df_sites.columns = df_sites.columns.str.strip()
-        df_form.columns = df_form.columns.str.strip()
-        df_sites["Site ID"] = df_sites["Site ID"].astype(str).str.strip().str.upper()
-        df_form["Site ID"] = df_form["Site ID"].astype(str).str.strip().str.upper()
-        df = df_sites.merge(df_form[["Site ID", "Latitude", "Longitude", "Timestamp"]], on="Site ID", how="left")
-        df["Status"] = df["Timestamp"].apply(lambda x: "Installed" if pd.notnull(x) else "Open")
-        df["Installation Date"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-        df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
-        df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
-        df.dropna(subset=["Latitude", "Longitude"], inplace=True)
-        return df
     except:
         return pd.DataFrame()
 
+    df_sites.columns = df_sites.columns.str.strip()
+    df_form.columns = df_form.columns.str.strip()
+
+    if "Site ID" not in df_sites.columns or "Site ID" not in df_form.columns:
+        return pd.DataFrame()
+
+    df_sites["Site ID"] = df_sites["Site ID"].astype(str).str.strip().str.upper()
+    df_form["Site ID"] = df_form["Site ID"].astype(str).str.strip().str.upper()
+
+    df_merged = df_sites.merge(
+        df_form[["Site ID", "Latitude", "Longitude", "Timestamp"]],
+        on="Site ID", how="left", suffixes=("", "_form")
+    )
+
+    df_merged["Status"] = df_merged["Timestamp"].apply(lambda x: "Installed" if pd.notnull(x) else "Open")
+    df_merged["Latitude"] = df_merged["Latitude"].fillna(df_merged["Latitude_form"])
+    df_merged["Longitude"] = df_merged["Longitude"].fillna(df_merged["Longitude_form"])
+    df_merged["Installation Date"] = pd.to_datetime(df_merged["Timestamp"], errors="coerce")
+
+    df_merged["Latitude"] = pd.to_numeric(df_merged["Latitude"], errors="coerce")
+    df_merged["Longitude"] = pd.to_numeric(df_merged["Longitude"], errors="coerce")
+    df_merged.dropna(subset=["Latitude", "Longitude"], inplace=True)
+
+    return df_merged
+
 df = load_data()
 if df.empty:
-    st.error("⚠️ No data loaded. Please check the Google Sheets links or structure.")
+    st.error("⚠️ No data loaded. Please check the Google Sheets links or data structure.")
     st.stop()
 
-# --- الفلاتر ---
+# --- Sidebar Filters ---
 st.sidebar.header("🔍 Filter Options")
 regions = df["Region"].dropna().unique().tolist() if "Region" in df.columns else []
-status_filter = st.sidebar.multiselect("Select Status", ["Installed", "Open"], default=["Installed", "Open"])
+status_filter = st.sidebar.multiselect("Select Status", options=["Installed", "Open"], default=["Installed", "Open"])
 region_filter = st.sidebar.multiselect("Select Region", options=regions, default=regions)
 date_range = st.sidebar.date_input("Installation Date Range", [])
 
@@ -61,65 +80,64 @@ filtered_df = df[df["Status"].isin(status_filter)]
 if region_filter:
     filtered_df = filtered_df[filtered_df["Region"].isin(region_filter)]
 if date_range and len(date_range) == 2:
-    filtered_df = filtered_df[filtered_df["Installation Date"].between(pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]))]
+    filtered_df = filtered_df[
+        filtered_df["Installation Date"].between(pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]))
+    ]
 
 # --- KPIs ---
-st.markdown("""
-    <style>
-        .kpi-container {
-            display: flex;
-            justify-content: space-around;
-            padding: 20px 0;
-        }
-        .kpi {
-            background-color: #f0f8ff;
-            border-radius: 15px;
-            padding: 20px;
-            width: 18%;
-            text-align: center;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-        }
-        .kpi h2 { color: #007ACC; margin-bottom: 10px; }
-        .kpi p { font-size: 22px; font-weight: bold; }
-    </style>
-    <div class='kpi-container'>
-        <div class='kpi'><h2>Total Sites</h2><p>{}</p></div>
-        <div class='kpi'><h2>Installed</h2><p>{}</p></div>
-        <div class='kpi'><h2>Open</h2><p>{}</p></div>
-        <div class='kpi'><h2>Progress %</h2><p>{}%</p></div>
-        <div class='kpi'><h2>Daily Rate</h2><p>{} sites/day</p></div>
-    </div>
-""".format(
-    len(filtered_df),
-    (filtered_df["Status"] == "Installed").sum(),
-    (filtered_df["Status"] == "Open").sum(),
-    round((filtered_df["Status"] == "Installed").sum() / len(filtered_df) * 100, 2) if len(filtered_df) else 0,
-    round((filtered_df["Status"] == "Installed").sum() / max((filtered_df["Installation Date"].max() - filtered_df["Installation Date"].min()).days, 1), 2)
-), unsafe_allow_html=True)
+total_sites = len(filtered_df)
+installed_count = (filtered_df["Status"] == "Installed").sum()
+open_count = (filtered_df["Status"] == "Open").sum()
+progress = round((installed_count / total_sites) * 100, 2) if total_sites else 0
+installed_dates = pd.to_datetime(filtered_df[filtered_df["Status"] == "Installed"]["Installation Date"], errors="coerce")
+days_span = (installed_dates.max() - installed_dates.min()).days or 1 if not installed_dates.empty else 1
+daily_rate = round(installed_count / days_span, 2) if days_span else 0
+
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+kpi1.metric("Total Sites", total_sites)
+kpi2.metric("Installed", installed_count)
+kpi3.metric("Open", open_count)
+kpi4.metric("Progress %", f"{progress}%")
+kpi5.metric("Daily Rate", f"{daily_rate} sites/day")
 
 # --- Map ---
 st.subheader("📍 Site Installation Map")
 m = folium.Map(location=[23.8859, 45.0792], zoom_start=6)
 for _, row in filtered_df.iterrows():
+    color = "green" if row["Status"] == "Installed" else "red"
+    popup_info = f"Site ID: {row['Site ID']}<br>Status: {row['Status']}<br>Date: {row['Installation Date'].date() if pd.notnull(row['Installation Date']) else 'N/A'}<br>Region: {row.get('Region', 'N/A')}"
     folium.CircleMarker(
         location=[row["Latitude"], row["Longitude"]],
-        radius=5,
-        popup=f"{row['Site ID']} - {row['Status']}",
-        color="green" if row["Status"] == "Installed" else "red",
+        radius=6,
+        popup=popup_info,
+        color=color,
         fill=True,
-        fill_opacity=0.7
+        fill_color=color,
+        fill_opacity=0.8,
     ).add_to(m)
 folium_static(m)
 
 # --- Charts ---
 st.subheader("📊 Status Distribution")
-fig_status = px.pie(filtered_df, names="Status", title="Status Breakdown", hole=0.4, color_discrete_sequence=["green", "red"])
-st.plotly_chart(fig_status, use_container_width=True)
+chart_type = st.radio("Chart Type", ["Pie", "Bar"], horizontal=True)
+status_counts = filtered_df["Status"].value_counts()
+fig, ax = plt.subplots()
+if chart_type == "Pie":
+    status_counts.plot.pie(autopct="%1.1f%%", colors=["green", "red"], ax=ax)
+    ax.set_ylabel("")
+else:
+    status_counts.plot.bar(color=["green", "red"], ax=ax)
+    ax.set_ylabel("Site Count")
+st.pyplot(fig)
 
 st.subheader("📈 Installation Trend")
-df_trend = filtered_df[filtered_df["Status"] == "Installed"].groupby(filtered_df["Installation Date"].dt.date).size().reset_index(name="Installed")
-fig_trend = px.line(df_trend, x="Installation Date", y="Installed", markers=True, title="Daily Installation")
-st.plotly_chart(fig_trend, use_container_width=True)
+trend_data = filtered_df[filtered_df["Status"] == "Installed"].copy()
+trend_data = trend_data.groupby(trend_data["Installation Date"].dt.date).size()
+fig2, ax2 = plt.subplots()
+trend_data.plot(ax=ax2)
+ax2.set_ylabel("Installed Sites")
+ax2.set_xlabel("Date")
+st.pyplot(fig2)
 
 # --- Export ---
 st.markdown("### 📥 Export Options")
@@ -132,9 +150,18 @@ pdf_html = f"<html><body>{html_table}</body></html>"
 b64 = base64.b64encode(pdf_html.encode()).decode()
 st.markdown(f'<a href="data:text/html;base64,{b64}" download="installation_report.html">⬇️ Download PDF Report</a>', unsafe_allow_html=True)
 
-# --- التذييل ---
+# --- Footer ---
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>Powered by Mohammed Alfadhel</p>", unsafe_allow_html=True)
 
+# --- تحديث الوقت والعداد ---
 ksa_time = datetime.now(ZoneInfo("Asia/Riyadh"))
-st.markdown(f"<p style='text-align: center;'>⏰ آخر تحديث: {ksa_time.strftime('%H:%M:%S')} - تحديث تلقائي كل {refresh_interval} ثانية</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center;'>⏰ آخر تحديث: {ksa_time.strftime('%H:%M:%S')} (تحديث كل {refresh_interval} ثانية)</p>", unsafe_allow_html=True)
+
+# عداد تنازلي بصري
+remaining = refresh_interval - (count % refresh_interval)
+color = "red" if remaining <= 10 else "black"
+st.markdown(
+    f"<p style='text-align:center; font-size:18px; color:{color};'>⏳ سيتم التحديث خلال: {remaining} ثانية</p>",
+    unsafe_allow_html=True
+)
