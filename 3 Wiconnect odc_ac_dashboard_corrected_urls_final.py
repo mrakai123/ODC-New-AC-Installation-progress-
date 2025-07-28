@@ -54,7 +54,7 @@ from zoneinfo import ZoneInfo
 def load_data():
     try:
         sheet_url = "https://docs.google.com/spreadsheets/d/1pZBg_lf8HakI6o2W1v8u1lUN2FGJn1Jc/export?format=csv&gid=622694975"
-        form_url = "https://docs.google.com/spreadsheets/d/1IeZVNb01-AMRuXjj9SZQyELTVr6iw5Vq4JsiN7PdZEs/export?format=csv&gid=1076079545"
+        form_url = "https://docs.google.com/spreadsheets/d/1GClN4fCfP8aAUoUO3ayHOdUP6eiuL1wmrSaxiR4CxK8/edit?gid=1294784605#gid=1294784605"
         df_sites = pd.read_csv(sheet_url)
         df_form = pd.read_csv(form_url)
     except:
